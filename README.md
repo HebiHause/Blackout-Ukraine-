@@ -6,6 +6,7 @@ outage, and lists nearby Invincibility Points (Пункти Незламност
 
 - What we build and why: [docs/SPEC.md](docs/SPEC.md)
 - Contribution rules: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+- Decisions and the research behind them: [docs/decisions/](docs/decisions/README.md), [docs/research/](docs/research/README.md)
 
 ## Stack
 

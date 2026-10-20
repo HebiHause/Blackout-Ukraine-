@@ -1,0 +1,50 @@
+# Джерела даних про відключення світла в Україні (для бота «Blackout Ukraine»)
+
+- **Date:** 2026-10-17 · **Revisit by:** 2026-12-17 (недокументовані API, формат може змінитися будь-коли) · **Depth:** standard
+- **Status:** verified (researcher + незалежний fact-checker, реальні запити curl 2026-10-17)
+- **Question:** Звідки Telegram-бот (Java, до 1000 користувачів, MVP до 14.11.2026) може програмно брати
+  графіки відключень і список Пунктів Незламності, і чи це дозволено?
+- **Decision it feeds:** місто старту і джерело даних для MVP → [0001](../decisions/0001-kyiv-and-yasno-as-data-source.md).
+- **Constraints:** лише сервер (без браузера), одне місто на старт, Київ або Одеса.
+
+## TL;DR
+MVP: **Київ + неофіційний JSON YASNO** (`app.yasno.ua/api/blackout-service/...`). Працює звичайним HTTP
+без JS-challenge, дає слоти в хвилинах від півночі на сьогодні/завтра — відлік рахується напряму. Офіційного
+API і ліцензії на дані немає ні в кого: потрібен адаптер з валідацією схеми, кеш останнього графіка й алерт
+на зміну формату. Одеса можлива лише через парсинг HTML dtek-oem (крихко, robots.txt забороняє). Пункти
+Незламності для Києва й Одеси є як відкриті дані на data.gov.ua.
+
+## Findings
+| ID  | Claim                                                                                                                                                                                                                                                                                                                                                                           | Source                                             | Confidence | Verdict                                                           |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ---------- | ----------------------------------------------------------------- |
+| C1  | `GET https://app.yasno.ua/api/blackout-service/public/shutdowns/addresses/v2/regions` → лише Київ (region 25, dso 902 «ДТЕК Київські електромережі») і Дніпро (3; dso 301 ДнЕМ, 303 ЦЕК). Одеси немає                                                                                                                                                                           | curl                                               | high       | CONFIRMED                                                         |
+| C2  | `GET .../shutdowns/regions/25/dsos/902/planned-outages` → об'єкт за ключем черги: `{today:{slots:[{start,end,type}],date,status}, tomorrow:{…}, updatedOn}`; `start`/`end` — хвилини 0–1440; `type` бачили `Definite`, `NotPlanned`; `status` — `ScheduleApplies`                                                                                                               | curl                                               | high       | CONFIRMED (інші значення enum можливі, не траплялися)             |
+| C3  | Київ у YASNO: **60 черг**, ключі `1.1, 2.1 … 60.1` (усі з `.1`), не 1.1–6.2                                                                                                                                                                                                                                                                                                     | curl + `jq keys`                                   | high       | CONFIRMED (очікування «12 черг» спростоване)                      |
+| C4  | `cache-control: max-age=300, public`; CDN Imperva, але curl з UA проходить без challenge                                                                                                                                                                                                                                                                                        | curl                                               | high       | CONFIRMED (з хмарних IP не перевірено)                            |
+| C5  | `.../shutdowns/probable-outages?regionId=25&dsoId=902` — прогнозні графіки за днями тижня                                                                                                                                                                                                                                                                                       | curl (researcher), `api/const.py` ha-yasno-outages | medium     | CONFIRMED researcher-ом, fact-checker не перевіряв окремо         |
+| C6  | robots.txt: `app.yasno.ua` → 404; `yasno.ua` → `Disallow: /api/` (на інший хост). ToS не знайдено                                                                                                                                                                                                                                                                               | curl                                               | high       | CONFIRMED                                                         |
+| C7  | `dtek-oem.com.ua/ua/shutdowns` (Одеса) віддає curl-у 200 / ~930 KB HTML з `DisconSchedule.fact = {data:{<unix-ts>:{GPV1.1…GPV6.2:{"1".."24": yes/no/first/second}}}, update, today}`                                                                                                                                                                                            | curl                                               | high       | CONFIRMED (у JS є ще `maybe/mfirst/msecond`)                      |
+| C8  | `dtek-oem.com.ua/robots.txt`: `User-agent: *` → `Disallow: /`, пошуковики дозволені                                                                                                                                                                                                                                                                                             | curl                                               | high       | CONFIRMED                                                         |
+| C9  | `dtek-kem.com.ua/ua/shutdowns` (Київ) → Incapsula challenge, даних немає                                                                                                                                                                                                                                                                                                        | curl                                               | high       | CONFIRMED                                                         |
+| C10 | `denysdovhan/ha-yasno-outages` (MIT, push 2026-10-01, 194★) використовує ті самі ендпоінти YASNO (+ streets/houses)                                                                                                                                                                                                                                                             | GitHub API, `api/const.py`                         | high       | CONFIRMED                                                         |
+| C11 | `playsi/Yasno-telegram-bot` (MIT, push 2026-10-17) — аналогічний бот на YASNO                                                                                                                                                                                                                                                                                                   | GitHub API                                         | high       | CONFIRMED (ендпоінти не перевірялись)                             |
+| C12 | Національного відкритого API Пунктів Незламності немає (карта лише в «Дії»)                                                                                                                                                                                                                                                                                                     | пошук                                              | medium     | PARTIAL (швидкий пошук)                                           |
+| C13 | data.gov.ua: Одеська ОДА — CSV `active.csv`/`standby.csv` (адреса, назва, місткість), раз на пів року, змінено 2026-08-19; Чернівецька ОДА — JSON; КМДА — ArcGIS GeoJSON `gisserver-stage.kyivcity.gov.ua/mayno/rest/services/KYIV_API/Public_protection/MapServer/1/query` (lat/long, адреса, години, генератор, зарядка, вода, інтернет…), раз на квартал, змінено 2026-04-15 | data.gov.ua CKAN API, завантаження                 | high       | CONFIRMED (хост КМДА має `stage` у назві — стабільність невідома) |
+
+## Інші знахідки (не перевірені окремо)
+- Open-source: `aavdberg/ha-dtek` (MIT, портал DTEK включно з аварійними), `BR0kEN-/ha-dtek-shutdowns`,
+  `tmykhalc/dtek-kyiv-shutdowns`, `alk3mist/temno` (CLI до YASNO), `rodnen/vydko-extension-chromium`.
+- Конкуренти (знання моделі, не перевірено): застосунок YASNO, боти/канали ДТЕК, svitlo.live, ЕнергоUA.
+- Офіційного API в інших обленерго чи Укренерго не знайдено.
+
+## Recommendation
+1. Київ, YASNO `planned-outages`, опитування раз на 5–10 хв, зберігати `updatedOn`; вибір черги — 60 варіантів
+   (`1`…`60`), тож UI вибору черги не може бути простим рядком із 6 кнопок.
+2. Адаптер `OutageSource` у ядрі: валідація схеми, кеш останнього відомого графіка, «станом на …» у кожному
+   повідомленні, алерт розробнику при помилці/зміні формату. Fallback — `probable-outages`.
+3. Пункти Незламності — CSV/GeoJSON з data.gov.ua (Київ: КМДА), плюс ручна перевірка; PDF генерувати з них.
+4. Написати YASNO з проханням про дозвіл — для гранту це зніме питання журі про легальність.
+
+## Unverified
+ToS YASNO і DTEK; доступність з хмарних/VPS IP і rate-limit Imperva; структура аварійних відключень DTEK;
+конкуренти; чи стабільний `gisserver-stage` КМДА.
