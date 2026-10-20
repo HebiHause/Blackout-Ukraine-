@@ -1,0 +1,27 @@
+# Maven
+target/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+out/
+
+# Secrets: the bot token lives here, never in git
+.env
+
+# Local SQLite database and logs
+*.db
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Mentor side - kept next to the repo, never committed
+mentoring/
+learning/
+
+# Claude Code files - mentors' tooling, not part of the project
+.claude/
+CLAUDE.md
+CLAUDE.local.md
