@@ -65,3 +65,5 @@ Java 25, Maven, бібліотека TelegramBots, Jackson, SQLite (JDBC), JUnit
 - Хто тримає токен `@blackout_ukrain_bot`.
 - Чи пускає YASNO запити з IP орендованого сервера.
 - Дозвіл від YASNO на використання даних (бажано до здачі).
+
+(Затверджено)
