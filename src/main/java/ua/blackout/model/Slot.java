@@ -28,4 +28,8 @@ public record Slot(int startMinute, int endMinute, SlotType type) {
         return endMinute - startMinute;
 
     }
+
+    public boolean isOutage() {
+        return type == SlotType.DEFINITE;
+    }
 }
