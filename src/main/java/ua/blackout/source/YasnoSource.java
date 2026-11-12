@@ -30,6 +30,8 @@ public class YasnoSource implements OutageSource {
             LocalTime.of(14, 0),
             LocalTime.of(20, 0));
 
+    static final Duration PUBLISH_DELAY = Duration.ofMinutes(10);
+
     private static final ZoneId KYIV = ZoneId.of("Europe/Kyiv");
 
     private final HttpClient client = HttpClient.newBuilder()
@@ -39,9 +41,10 @@ public class YasnoSource implements OutageSource {
 
     private Map<String, YasnoQueueDto> lastGood;
     private Instant lastGoodAt;
+    private Instant lastAttemptAt;
 
     @Override
-    public List<DaySchedule> getSchedules(String queue) {
+    public synchronized List<DaySchedule> getSchedules(String queue) {
         Map<String, YasnoQueueDto> data = refresh();
         YasnoQueueDto dto = data.get(queue);
         if (dto == null) {
@@ -50,13 +53,14 @@ public class YasnoSource implements OutageSource {
         return YasnoParser.toSchedules(dto);
     }
 
-    public Instant lastUpdated() {
+    // Time of the last successful fetch, for the "as of ..." text in the bot.
+    public synchronized Instant lastUpdated() {
         return lastGoodAt;
     }
 
-    // Returns the latest good data. Calls YASNO only if a fetch moment
-    // has passed since the last successful fetch.
-    private synchronized Map<String, YasnoQueueDto> refresh() {
+    // Returns cached data. Calls YASNO only if a fetch moment (plus delay)
+    // has passed since the last attempt, successful or not.
+    private Map<String, YasnoQueueDto> refresh() {
         if (lastGood != null && !isFetchDue()) {
             return lastGood;
         }
@@ -67,15 +71,16 @@ public class YasnoSource implements OutageSource {
         return lastGood;
     }
 
-    // True if at least one fetch moment has passed since lastGoodAt.
+    // True if at least one fetch moment (plus PUBLISH_DELAY) has passed since the last attempt.
     private boolean isFetchDue() {
-        if (lastGoodAt == null) {
+        if (lastAttemptAt == null) {
             return true;
         }
-        ZonedDateTime last = lastGoodAt.atZone(KYIV);
+        ZonedDateTime last = lastAttemptAt.atZone(KYIV);
         ZonedDateTime now = ZonedDateTime.now(KYIV);
         for (LocalTime time : FETCH_TIMES) {
-            ZonedDateTime moment = now.toLocalDate().atTime(time).atZone(KYIV);
+            ZonedDateTime moment = now.toLocalDate().atTime(time).atZone(KYIV)
+                    .plus(PUBLISH_DELAY);
             if (moment.isAfter(last) && !moment.isAfter(now)) {
                 return true;
             }
@@ -84,6 +89,7 @@ public class YasnoSource implements OutageSource {
     }
 
     private void fetch() {
+        lastAttemptAt = Instant.now();
         HttpRequest request = HttpRequest.newBuilder(URI.create(URL))
                 .timeout(Duration.ofSeconds(10))
                 .header("Accept", "application/json")
