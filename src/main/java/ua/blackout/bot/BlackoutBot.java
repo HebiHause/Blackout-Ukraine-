@@ -2,6 +2,7 @@ package ua.blackout.bot;
 
 import ua.blackout.model.DaySchedule;
 import ua.blackout.service.OutageCalculator;
+import ua.blackout.service.UserStore;
 import ua.blackout.source.YasnoSource;
 
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
@@ -11,6 +12,7 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.sql.SQLException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -28,10 +30,11 @@ public class BlackoutBot implements LongPollingSingleThreadUpdateConsumer {
     private final YasnoSource source = new YasnoSource();
     private final OutageCalculator calculator = new OutageCalculator();
 
-    private final Map<Long, String> queues = new HashMap<>();
+    private final UserStore store;
 
-    public BlackoutBot(String token) {
+    public BlackoutBot(String token, UserStore store) {
         this.client = new OkHttpTelegramClient(token);
+        this.store = store;
     }
 
     @Override
@@ -67,7 +70,12 @@ public class BlackoutBot implements LongPollingSingleThreadUpdateConsumer {
         if (!isValidQueue(queue)) {
             return "Невірна черга. Допустимі значення: від 1.1 до 60.1.";
         }
-        queues.put(chatId, queue);
+        try {
+            store.saveQueue(chatId, queue);
+        } catch (SQLException e) {
+            System.err.println("save failed: " + e.getMessage());
+            return "Не вдалося зберегти чергу. Спробуйте ще раз.";
+        }
         return "Чергу збережено: " + queue + ". Тепер надішліть /next.";
     }
 
@@ -80,7 +88,13 @@ public class BlackoutBot implements LongPollingSingleThreadUpdateConsumer {
     }
 
     private String nextOutageText(long chatId) {
-        String queue = queues.get(chatId);
+        String queue;
+        try {
+            queue = store.findQueue(chatId).orElse(null);
+        } catch (SQLException e) {
+            System.err.println("read failed: " + e.getMessage());
+            return "Не вдалося прочитати чергу. Спробуйте ще раз.";
+        }
         if (queue == null) {
             return "Спершу вкажіть чергу: /queue 1.1";
         }
