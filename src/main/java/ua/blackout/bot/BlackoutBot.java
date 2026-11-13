@@ -118,7 +118,7 @@ public class BlackoutBot implements LongPollingSingleThreadUpdateConsumer {
         if (minutes == 0){
             return hours + " год";
         }
-        return hours + " год" + minutes + " хв";
+        return hours + " год " + minutes + " хв";
     }
 
     private void send(long chatId, String text) {

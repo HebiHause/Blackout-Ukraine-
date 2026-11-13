@@ -22,4 +22,13 @@ public class OutageCalculator {
         }
         return best;
     }
+
+    public int minutesUntilPowerReturns(List<Slot> slots, int now){
+        for (Slot slot : slots){
+            if (slot.isOutage() && slot.isActive(now)){
+                return  slot.endMinute() - now;
+            }
+        }
+        return -1;
+    }
 }
