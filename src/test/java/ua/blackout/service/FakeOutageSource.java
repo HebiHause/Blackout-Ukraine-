@@ -1,6 +1,7 @@
 package ua.blackout.service;
 
 import ua.blackout.model.DaySchedule;
+import ua.blackout.service.OutageSource;
 
 import java.util.ArrayList;
 import java.util.List;

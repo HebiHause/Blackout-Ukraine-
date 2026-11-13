@@ -1,3 +1,5 @@
+package ua.blackout.service;
+
 import ua.blackout.model.Slot;
 import ua.blackout.model.SlotType;
 import org.junit.jupiter.api.Test;

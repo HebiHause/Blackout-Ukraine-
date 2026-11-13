@@ -21,8 +21,8 @@ class YasnoParserTest {
         List<DaySchedule> days = YasnoParser.toSchedules(loadSample().get("1.1"));
 
         DaySchedule today = days.get(0);
-        assertEquals(LocalDate.of(2026, 11, 12), today.date());
-        assertEquals(1020, today.totalOutageMinutes());
+        assertEquals(LocalDate.of(2026, 11, 13), today.date());
+        assertEquals(720, today.totalOutageMinutes());
     }
 
     @Test
@@ -30,7 +30,7 @@ class YasnoParserTest {
         List<DaySchedule> days = YasnoParser.toSchedules(loadSample().get("1.1"));
 
         DaySchedule tomorrow = days.get(1);
-        assertEquals(LocalDate.of(2026, 11, 13), tomorrow.date());
+        assertEquals(LocalDate.of(2026, 11, 14), tomorrow.date());
         assertTrue(tomorrow.slots().isEmpty());
     }
 

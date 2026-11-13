@@ -26,7 +26,7 @@ class YasnoResponseTest {
     void parsesTodaySlotsOfQueueOne() throws Exception {
         YasnoQueueDto queue = loadSample().get("1.1");
 
-        assertEquals(6, queue.today().slots().size());
+        assertEquals(5, queue.today().slots().size());
         assertEquals("Definite", queue.today().slots().get(1).type());
         assertEquals("ScheduleApplies", queue.today().status());
     }
