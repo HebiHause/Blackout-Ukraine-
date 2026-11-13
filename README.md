@@ -1,20 +1,58 @@
 # Blackout Ukraine
 
-Telegram bot that shows the power outage schedule for your queue in Kyiv, counts down to the next
-outage, and lists nearby Invincibility Points (Пункти Незламності). Built for a mini-grant, MVP due
-2026-11-14.
+Telegram-бот для українців, який показує, скільки часу лишилось до наступного планового відключення світла або до його завершення, за графіком YASNO (Київ).
 
-- What we build and why: [docs/SPEC.md](docs/SPEC.md)
-- Contribution rules: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
-- Decisions and the research behind them: [docs/decisions/](docs/decisions/README.md), [docs/research/](docs/research/README.md)
+Бот: https://t.me/blackout_ukrain_bot
 
-## Stack
+## Стан проєкту (демо 14.11.2026)
 
-Java 25 (Temurin), Maven, TelegramBots, Jackson, SQLite via JDBC, JUnit 5.
+Працює:
+- `/start`: коротка довідка
+- `/queue <черга>`: вибір своєї черги (від 1.1 до 60.1), зберігається в SQLite і переживає перезапуск бота
+- `/next`: час до наступного відключення, а якщо відключення вже йде, час до ввімкнення (в годинах і хвилинах) з позначкою "станом на ..." за київським часом
+- завантаження графіка YASNO, розбір JSON, кеш останньої успішної відповіді
+- юніт-тести розрахунку і розбору (без мережі та Telegram)
 
-## Running locally
+Ще не зроблено:
+- нагадування перед відключенням
+- інші обленерго, база Пунктів Незламності
+- склеювання слотів на межі доби
+- робота 24/7 (бот запускається локально)
+- перевірка на реальних користувачах
 
-The project skeleton lands in the first task (week of 2026-10-19). Until then there is nothing to run.
+## Конфіденційність
 
-The bot token is read from the `BOT_TOKEN` environment variable. Copy `.env.example` to `.env` and
-fill it in; `.env` is git-ignored. Use the separate test bot for development, never the production one.
+У базі зберігаються лише `chat_id` Telegram і обрана черга. Інших персональних
+даних бот не збирає. Файл бази (`blackout.db`) не потрапляє в репозиторій.
+
+## Запуск
+
+Потрібні JDK 25 і Maven.
+
+1. Створити тестового бота в @BotFather і отримати токен.
+2. Задати змінну середовища `BOT_TOKEN` (токен ніколи не зберігається в git).
+3. Запустити клас `ua.blackout.bot.Main`.
+4. У Telegram: `/start`, `/queue 1.1`, `/next`.
+
+Тести: `mvn test`
+
+Під час старту на Java 25 SQLite-драйвер виводить попередження про native access.
+Його прибирає параметр JVM `--enable-native-access=ALL-UNNAMED`.
+
+## Структура
+
+- `model`: Slot, SlotType, DaySchedule
+- `service`: OutageSource (інтерфейс), OutageCalculator, UserStore (SQLite)
+- `source`: YasnoSource (HttpClient, кеш), YasnoParser, DTO
+- `bot`: BlackoutBot, Main
+
+Залежності: `bot → service → source → model`. Логіка розрахунку не знає ні про
+Telegram, ні про HTTP, тому тестується на тестовому джерелі.
+
+## Відомі обмеження
+
+- Графік береться з неофіційного джерела і може бути неточним або застарілим.
+- Тести розбору прив'язані до збереженого зразка відповіді від 13.11.2026.
+- Стан діалогу й кеш графіка зберігаються в пам'яті; після перезапуску кеш
+  заповнюється першим запитом.
+- Слоти, що торкаються на межі доби, не склеюються.
