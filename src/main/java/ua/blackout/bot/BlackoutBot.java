@@ -1,6 +1,7 @@
 package ua.blackout.bot;
 
 import ua.blackout.model.DaySchedule;
+import ua.blackout.model.Slot;
 import ua.blackout.service.OutageCalculator;
 import ua.blackout.service.UserStore;
 import ua.blackout.source.YasnoSource;
@@ -13,18 +14,19 @@ import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class BlackoutBot implements LongPollingSingleThreadUpdateConsumer {
 
     private static final ZoneId KYIV = ZoneId.of("Europe/Kyiv");
     private static final DateTimeFormatter TIME_FORMAT =
             DateTimeFormatter.ofPattern("dd.MM HH:mm").withZone(KYIV);
+    private static final String DISCLAIMER =
+            "Це плановий графік: аварійні відключення в нього не входять і можуть статися будь-коли.";
 
     private final TelegramClient client;
     private final YasnoSource source = new YasnoSource();
@@ -106,21 +108,29 @@ public class BlackoutBot implements LongPollingSingleThreadUpdateConsumer {
         }
         ZonedDateTime now = ZonedDateTime.now(KYIV);
         int nowMinute = now.toLocalTime().toSecondOfDay() / 60;
-        int best = -1;
-        for (DaySchedule day : days) {
-            if (!day.date().equals(now.toLocalDate())) {
-                continue;
-            }
-            int left = calculator.minutesUntilNextOutage(day.slots(), nowMinute);
-            if (left >= 0 && (best < 0 || left < best)) {
-                best = left;
-            }
+        List<Slot> today = slotsFor(days, now.toLocalDate());
+        List<Slot> tomorrow = slotsFor(days, now.toLocalDate().plusDays(1));
+        OutageCalculator.Countdown countdown = calculator.countdown(today, tomorrow, nowMinute);
+
+        String head;
+        if (countdown.outageNow()) {
+            head = "Зараз відключення. Світло має повернутися через " + formatMinutes(countdown.minutes()) + ".";
+        } else if (countdown.minutes() >= 0) {
+            head = "До наступного відключення: " + formatMinutes(countdown.minutes()) + ".";
+        } else {
+            head = "На сьогодні й завтра відключень за графіком немає.";
         }
         String asOf = "Черга " + queue + ". Джерело: YASNO, станом на " + TIME_FORMAT.format(source.lastUpdated()) + " (Київ).";
-        if (best < 0) {
-            return "Більше початків відключень на сьогодні за графіком немає.\n" + asOf;
+        return head + "\n" + asOf + "\n" + DISCLAIMER;
+    }
+
+    private List<Slot> slotsFor(List<DaySchedule> days, LocalDate date) {
+        for (DaySchedule day : days) {
+            if (day.date().equals(date)) {
+                return day.slots();
+            }
         }
-        return "До наступного відключення: " + formatMinutes(best) + " .\n" + asOf;
+        return List.of();
     }
 
     private String formatMinutes(int total){
