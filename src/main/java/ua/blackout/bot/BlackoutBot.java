@@ -29,14 +29,15 @@ public class BlackoutBot implements LongPollingSingleThreadUpdateConsumer {
             "Це плановий графік: аварійні відключення в нього не входять і можуть статися будь-коли.";
 
     private final TelegramClient client;
-    private final YasnoSource source = new YasnoSource();
+    private final YasnoSource source;
     private final OutageCalculator calculator = new OutageCalculator();
 
     private final UserStore store;
 
-    public BlackoutBot(String token, UserStore store) {
+    public BlackoutBot(String token, UserStore store, YasnoSource source) {
         this.client = new OkHttpTelegramClient(token);
         this.store = store;
+        this.source = source;
     }
 
     @Override

@@ -13,9 +13,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -24,15 +21,9 @@ public class YasnoSource implements OutageSource {
     static final String URL =
             "https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages";
 
-    // Fixed moments in Kyiv time when the source is allowed to hit YASNO.
-    static final List<LocalTime> FETCH_TIMES = List.of(
-            LocalTime.of(6, 0),
-            LocalTime.of(14, 0),
-            LocalTime.of(20, 0));
-
-    static final Duration PUBLISH_DELAY = Duration.ofMinutes(10);
-
-    private static final ZoneId KYIV = ZoneId.of("Europe/Kyiv");
+    // YASNO updates the schedule about every 5 minutes (docs/SPEC.md), so the cache
+    // lives as long: one request to YASNO per 5 minutes at most, however many users ask.
+    static final Duration CACHE_TTL = Duration.ofMinutes(5);
 
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -42,6 +33,7 @@ public class YasnoSource implements OutageSource {
     private Map<String, YasnoQueueDto> lastGood;
     private Instant lastGoodAt;
     private Instant lastAttemptAt;
+
 
     @Override
     public synchronized List<DaySchedule> getSchedules(String queue) {
@@ -58,8 +50,7 @@ public class YasnoSource implements OutageSource {
         return lastGoodAt;
     }
 
-    // Returns cached data. Calls YASNO only if a fetch moment (plus delay)
-    // has passed since the last attempt, successful or not.
+    // Returns cached data. Calls YASNO only when the cache is older than CACHE_TTL.
     private Map<String, YasnoQueueDto> refresh() {
         if (lastGood != null && !isFetchDue()) {
             return lastGood;
@@ -71,21 +62,26 @@ public class YasnoSource implements OutageSource {
         return lastGood;
     }
 
-    // True if at least one fetch moment (plus PUBLISH_DELAY) has passed since the last attempt.
+    // True if the cache is empty or the last attempt, successful or not, is older than CACHE_TTL.
+    // Counting failed attempts too keeps us from hammering YASNO while it is down.
     private boolean isFetchDue() {
-        if (lastAttemptAt == null) {
+        return isFetchDue(lastAttemptAt, Instant.now());
+    }
+
+    static boolean isFetchDue(Instant lastAttempt, Instant now) {
+        if (lastAttempt == null) {
             return true;
         }
-        ZonedDateTime last = lastAttemptAt.atZone(KYIV);
-        ZonedDateTime now = ZonedDateTime.now(KYIV);
-        for (LocalTime time : FETCH_TIMES) {
-            ZonedDateTime moment = now.toLocalDate().atTime(time).atZone(KYIV)
-                    .plus(PUBLISH_DELAY);
-            if (moment.isAfter(last) && !moment.isAfter(now)) {
-                return true;
-            }
+        return !now.isBefore(lastAttempt.plus(CACHE_TTL));
+    }
+
+    // Fetches when the cache is stale and returns the time of the last good data (null if none).
+    // Used by /health, so a running bot keeps the schedule fresh even when nobody asks.
+    public synchronized Instant refreshIfDue() {
+        if (isFetchDue()) {
+            fetch();
         }
-        return false;
+        return lastGoodAt;
     }
 
     private void fetch() {
